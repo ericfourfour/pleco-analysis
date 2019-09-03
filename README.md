@@ -1,6 +1,6 @@
 # My Pleco Data Analysis
 
-I have been studying Mandarin Chinese since January 2016. In April 2017, I started using Pleco to do flashcards. I find this to be a really great way to practice vocabulary.
+I have been studying Mandarin Chinese since January 2017. In April 2017, I started using Pleco to do flashcards. I find this to be a really great way to practice vocabulary.
 
 Pleco stores all of the flashcard results in a SQLite database and I always thought about how I could do some kind of analysis on this.
 
