@@ -135,5 +135,11 @@ review['new_vocab'] = review['new_vocab'].apply(lambda x: 0 if pd.isna(x) else x
 review['vocab_size'] = review['new_vocab'].cumsum()
 review['total_learned'] = review['net_learned'].cumsum()
 
-chart = review.plot.line(subplots=True)
-
+charts = review.plot.line(linewidth=0.1)
+plt.axhline(0, color='white', linewidth=0.1, zorder=1)
+plt.axvspan(pd.to_datetime('2017-04-29'), pd.to_datetime('2017-05-13'), color='red', label='China Trip')
+charts.axvline(pd.to_datetime('2018-09-02'), color='blue', linestyle='--', lw=2, label='SRS')
+charts.axvline(pd.to_datetime('2018-07-31'), color='purple', linestyle='--', lw=2, label='TELUS')
+charts.axvline(pd.to_datetime('2019-01-30'), color='green', linestyle='--', lw=2, label='Daily Backups')
+charts.axvline(pd.to_datetime('2019-02-20'), color='purple', linestyle='--', lw=2, label='TELUS Restructuring')
+plt.xticks(rotation=90)
