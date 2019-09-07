@@ -99,47 +99,111 @@ def save_history(full_history, last_dt, last_scores):
     with open('save/last_dt.pickle', 'wb') as f:
         pickle.dump(last_dt, f)
 
-full_history, last_dt, last_scores = load_history()
-full_history, last_dt, last_scores = get_full_history(full_history, last_dt, last_scores)
-save_history(full_history, last_dt, last_scores)
+def update_and_get_history():
+    full_history, last_dt, last_scores = load_history()
+    full_history, last_dt, last_scores = get_full_history(full_history, last_dt, last_scores)
+    save_history(full_history, last_dt, last_scores)
+    return full_history
 
-full_history.info()
+def get_prep_frame(full_history):
+    prep = full_history.copy()
+    prep['review_ts'] = prep['review_ts'].dt.tz_localize('UTC').dt.tz_convert('America/Toronto').dt.tz_localize(None)
+    prep['review_dt'] = pd.to_datetime(prep['review_ts']).apply(lambda x: x.date())
+    prep = prep[['headword', 'review_dt', 'result', 'review_ts']]
+    prep = prep.sort_values(['headword', 'review_dt', 'review_ts'])
+    prep.reset_index(drop=True, inplace=True)
 
-prep = full_history.copy()
-prep['review_dt'] = pd.to_datetime(prep['review_ts']).apply(lambda x: x.date())
-prep = prep[['headword', 'review_dt', 'result', 'review_ts']]
-prep = prep.sort_values(['headword', 'review_dt', 'review_ts'])
-prep.reset_index(drop=True, inplace=True)
+    prep['occurrence'] = prep.groupby(['headword']).cumcount() + 1
+    prep['n_correct'] = prep.groupby(['headword'])['result'].apply(lambda x: x.cumsum())
+    prep['n_incorrect'] = prep.groupby(['headword'])['result'].apply(lambda x: x.apply(lambda y: not y).cumsum())
+    prep['n_correct_day'] = prep.groupby(['headword', 'review_dt'])['result'].transform('sum')
+    prep['n_incorrect_day'] = prep.groupby(['headword', 'review_dt'])['result'].transform(lambda x: x.apply(lambda y: not y).sum())
+    prep['result_eod'] = prep.groupby(['headword', 'review_dt'])['result'].transform('last')
+    prep['result_bod'] = prep.groupby(['headword', 'review_dt'])['result'].transform('first')
+    prep['learned'] = prep[['n_correct', 'n_incorrect', 'n_correct_day', 'n_incorrect_day', 'result_bod', 'result_eod']].apply(lambda x: x[0] > x[1] and x[2] > x[3] and x[4] and x[5], axis=1)
+    prep['lag_learned'] = prep.groupby(['headword'], as_index=False)['learned'].shift(1)
 
-prep['n_correct'] = prep.groupby(['headword'])['result'].apply(lambda x: x.cumsum())
-prep['n_incorrect'] = prep.groupby(['headword'])['result'].apply(lambda x: x.apply(lambda y: not y).cumsum())
-prep['last_result'] = prep.groupby(['headword', 'review_dt'])['result'].transform('last')
-prep['learned'] = prep[['n_correct', 'n_incorrect', 'last_result']].apply(lambda x: x[0] > x[1] and x[2], axis=1)
-prep['lag_learned'] = prep.groupby(['headword'], as_index=False)['learned'].shift(1)
+    def get_net_learned(learned, lag_learned):
+        if (not pd.isna(lag_learned) and learned == lag_learned) or (pd.isna(lag_learned) and not learned):
+            return 0
+        if learned:
+            return 1
+        return -1
 
-def get_net_learned(learned, lag_learned):
-    if (not pd.isna(lag_learned) and learned == lag_learned) or (pd.isna(lag_learned) and not learned):
-        return 0
-    if learned:
-        return 1
-    return -1
+    prep['net_learned'] = prep[['learned', 'lag_learned']].apply(lambda x: get_net_learned(x[0], x[1]), axis=1)
 
-prep['net_learned'] = prep[['learned', 'lag_learned']].apply(lambda x: get_net_learned(x[0], x[1]), axis=1)
+    return prep
 
-n_reviewed = prep.groupby('review_dt')['headword'].count().rename('n_reviewed')
-new_vocab = prep.groupby(['headword'], as_index=False)['review_dt'].min().groupby(['review_dt'])['headword'].count().rename('new_vocab')
-net_learned = prep.groupby('review_dt')['net_learned'].sum()
+def get_daily_stats(prep):
+    n_reviewed = prep.groupby('review_dt')['headword'].count().rename('n_reviewed')
+    new_vocab = prep.groupby(['headword'], as_index=False)['review_dt'].min().groupby(['review_dt'])['headword'].count().rename('new_vocab')
+    net_learned = prep.groupby('review_dt')['net_learned'].sum()
+    learned = prep[prep['net_learned'] == 1].groupby('review_dt')['net_learned'].count().rename('learned')
+    forgotten = prep[prep['net_learned'] == -1].groupby('review_dt')['net_learned'].count().rename('forgotten')
 
-review = pd.DataFrame({'n_reviewed': n_reviewed, 'new_vocab': new_vocab, 'net_learned': net_learned})
-review['new_vocab'] = review['new_vocab'].apply(lambda x: 0 if pd.isna(x) else x)
-review['vocab_size'] = review['new_vocab'].cumsum()
-review['total_learned'] = review['net_learned'].cumsum()
+    review = pd.DataFrame({'n_reviewed': n_reviewed, 'new_vocab': new_vocab, 'net_learned': net_learned, 'learned': learned, 'forgotten': forgotten})
+    review['new_vocab'] = review['new_vocab'].apply(lambda x: 0 if pd.isna(x) else x)
+    review['learned'] = review['learned'].apply(lambda x: 0 if pd.isna(x) else x)
+    review['forgotten'] = review['forgotten'].apply(lambda x: 0 if pd.isna(x) else x)
+    review['vocab_size'] = review['new_vocab'].cumsum()
+    review['total_learned'] = review['net_learned'].cumsum()
+    review.index = pd.to_datetime(review.index)
+    review['n_reviewed'] = review['n_reviewed'].astype('u4')
+    review['new_vocab'] = review['new_vocab'].astype('u4')
+    review['net_learned'] = review['net_learned'].astype('i4')
+    review['learned'] = review['learned'].astype('u4')
+    review['forgotten'] = review['forgotten'].astype('u4')
+    review['vocab_size'] = review['vocab_size'].astype('u4')
+    review['total_learned'] = review['total_learned'].astype('i4')
 
-charts = review.plot.line()
-plt.axhline(0, color='white', linewidth=0.1, zorder=1)
-plt.axvspan(pd.to_datetime('2017-04-29'), pd.to_datetime('2017-05-13'), color='red', label='China Trip')
-charts.axvline(pd.to_datetime('2018-09-02'), color='blue', linestyle='--', lw=2, label='SRS')
-charts.axvline(pd.to_datetime('2018-07-31'), color='purple', linestyle='--', lw=2, label='TELUS')
-charts.axvline(pd.to_datetime('2019-01-30'), color='green', linestyle='--', lw=2, label='Daily Backups')
-charts.axvline(pd.to_datetime('2019-02-20'), color='purple', linestyle='--', lw=2, label='TELUS Restructuring')
-plt.xticks(rotation=90)
+    return review
+
+def show_daily_report(review):
+    charts = review.plot.line()
+    plt.axhline(0, color='white', linewidth=0.1, zorder=1)
+    plt.axvspan(pd.to_datetime('2017-04-29'), pd.to_datetime('2017-05-13'), color='red', label='China Trip')
+    charts.axvline(pd.to_datetime('2018-09-02'), color='blue', linestyle='--', lw=2, label='SRS')
+    charts.axvline(pd.to_datetime('2018-07-31'), color='purple', linestyle='--', lw=2, label='TELUS')
+    charts.axvline(pd.to_datetime('2019-01-30'), color='green', linestyle='--', lw=2, label='Daily Backups')
+    charts.axvline(pd.to_datetime('2019-02-20'), color='purple', linestyle='--', lw=2, label='TELUS Restructuring')
+    plt.xticks(rotation=90)
+
+def get_7_day_report(review):
+    weekly = review.loc[dt.date.today() - pd.DateOffset(7, 'D'):]
+    weekly.is_copy = False
+
+    weekly.rename(columns={'n_reviewed': 'reviewed'}, inplace=True)
+
+    weekly['cum_reviewed'] = weekly['reviewed'].cumsum()
+    weekly['cum_new_vocab'] = weekly['new_vocab'].cumsum()
+    weekly['cum_net_learned'] = weekly['net_learned'].cumsum()
+    weekly['cum_learned'] = weekly['learned'].cumsum()
+    weekly['cum_forgotten'] = weekly['forgotten'].cumsum()
+    
+    return weekly[['reviewed', 'new_vocab', 'learned', 'forgotten', 'net_learned', 'cum_reviewed', 'cum_new_vocab', 'cum_net_learned', 'cum_learned', 'cum_forgotten']]
+
+def get_7_day_vocab_report(prep):
+    rpt = prep[prep['review_dt'] >= dt.date.today() - pd.DateOffset(7, 'D')]
+    learned = rpt[prep['net_learned'] == 1]['headword']
+    forgot = rpt[prep['net_learned'] == -1]['headword']
+    new_vocab = rpt[(prep['occurrence']) == 1]['headword']
+
+
+def show_7_day_report(report):
+    report[['cum_reviewed', 'cum_new_vocab', 'cum_net_learned']].plot.line()
+    report[['reviewed', 'new_vocab', 'net_learned']].plot.line()
+    report[['net_learned', 'learned', 'forgotten']].plot.line()
+
+full_history = update_and_get_history()
+prep = get_prep_frame(full_history)
+review = get_daily_stats(prep)
+show_daily_report(review)
+weekly = get_7_day_report(review, prep)
+show_7_day_report(weekly)
+
+
+
+rpt = prep[prep['review_dt'] >= dt.date.today() - pd.DateOffset(7, 'D')]
+learned = rpt[prep['net_learned'] == 1]['headword']
+forgot = rpt[prep['net_learned'] == -1]['headword']
+new_vocab = rpt[(prep['occurrence']) == 1]['headword']
