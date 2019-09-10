@@ -2,3 +2,4 @@ data/
 .vscode/
 save/
 *.7z
+client_secret.json
