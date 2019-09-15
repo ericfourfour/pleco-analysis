@@ -268,6 +268,9 @@ show_daily_report(review)
 weekly = get_7_day_report(review)
 show_7_day_report(weekly)
 
+full_history.info()
+prep.info()
+
 vocab_rpt = get_7_day_vocab_report(prep)
 vocab_rpt_message = get_message(vocab_rpt)
 
