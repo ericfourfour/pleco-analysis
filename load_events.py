@@ -7,6 +7,12 @@ import pickle
 import os.path
 import matplotlib.pyplot as plt
 import numpy as np
+from googleapiclient.errors import HttpError
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from email.mime.text import MIMEText
+import base64
 
 def get_history(start_dt, end_dt, last_scores):
     pleco_db = sqlite3.connect("data/{}/Pleco Flashcard Database.pqb".format(end_dt.strftime("%Y-%m-%d %H.%M.%S")))
@@ -169,8 +175,7 @@ def show_daily_report(review):
     plt.xticks(rotation=90)
 
 def get_7_day_report(review):
-    weekly = review.loc[dt.date.today() - pd.DateOffset(7, 'D'):]
-    weekly.is_copy = False
+    weekly = review.loc[dt.date.today() - pd.DateOffset(7, 'D'):].copy()
 
     weekly.rename(columns={'n_reviewed': 'reviewed'}, inplace=True)
 
@@ -183,27 +188,93 @@ def get_7_day_report(review):
     return weekly[['reviewed', 'new_vocab', 'learned', 'forgotten', 'net_learned', 'cum_reviewed', 'cum_new_vocab', 'cum_net_learned', 'cum_learned', 'cum_forgotten']]
 
 def get_7_day_vocab_report(prep):
-    rpt = prep[prep['review_dt'] >= dt.date.today() - pd.DateOffset(7, 'D')]
-    learned = rpt[prep['net_learned'] == 1]['headword']
-    forgot = rpt[prep['net_learned'] == -1]['headword']
-    new_vocab = rpt[(prep['occurrence']) == 1]['headword']
+    import pinyin
+    import pinyin.cedict
 
+    rpt = prep[prep['review_dt'] >= dt.date.today() - pd.DateOffset(7, 'D')].copy()
+    rpt['headword'] = rpt['headword'].str.replace('@', '')
+
+    net_learned = rpt.groupby(['headword'])['net_learned'].sum()
+    occurrence = rpt.groupby(['headword'])['occurrence'].min()
+
+    vocab_rpt = pd.DataFrame({'net_learned': net_learned, 'occurrence': occurrence})
+    vocab_rpt['learned'] = vocab_rpt['net_learned'].apply(lambda x: x == 1)
+    vocab_rpt['forgot'] = vocab_rpt['net_learned'].apply(lambda x: x == -1)
+    vocab_rpt['new'] = vocab_rpt['occurrence'].apply(lambda x: x == 1)
+
+    vocab_rpt.reset_index(inplace=True)
+
+    vocab_rpt['pinyin'] = vocab_rpt['headword'].apply(lambda hw: pinyin.get(hw))
+    vocab_rpt['defn'] = vocab_rpt['headword'].apply(lambda hw: pinyin.cedict.translate_word(hw))
+
+    return vocab_rpt
 
 def show_7_day_report(report):
     report[['cum_reviewed', 'cum_new_vocab', 'cum_net_learned']].plot.line()
     report[['reviewed', 'new_vocab', 'net_learned']].plot.line()
     report[['net_learned', 'learned', 'forgotten']].plot.line()
 
+def create_message(to, subject, message_text):
+    message = MIMEText(message_text, 'html')
+    message['to'] = to
+    message['subject'] = subject
+    return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
+
+def send_message(service, user_id, message):
+    return (service.users().messages().send(userId=user_id, body=message).execute())
+
+def authenticate(scopes):
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', scopes)
+            creds = flow.run_console()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('gmail', 'v1', credentials=creds)
+
+    return service
+
+def get_message(vocab_rpt):
+    learned = vocab_rpt.query('learned')[['headword', 'pinyin', 'defn']]
+    forgot = vocab_rpt.query('forgot')[['headword', 'pinyin', 'defn']]
+    new_vocab = vocab_rpt.query('occurrence == 1')[['headword', 'pinyin', 'defn']]
+
+    s = "你这个星期练习了{}个词呀！你的报告如下：<p>".format(len(vocab_rpt.index))
+    if len(learned.index) > 0:
+        s += "你学到了{}个词：<br>{}<p>".format(len(learned.index), learned.to_html(index=False, col_space=50))
+    if len(forgot.index) > 0:
+        s += "你忘记了{}个词：<br>{}<p>".format(len(forgot.index), forgot.to_html(index=False, col_space=50))
+    if len(new_vocab.index) > 0:
+        s += "你学了{}个生词：<br>{}".format(len(new_vocab.index), new_vocab.to_html(index=False, col_space=50))
+    return s
+
 full_history = update_and_get_history()
 prep = get_prep_frame(full_history)
 review = get_daily_stats(prep)
 show_daily_report(review)
-weekly = get_7_day_report(review, prep)
+weekly = get_7_day_report(review)
 show_7_day_report(weekly)
 
+vocab_rpt = get_7_day_vocab_report(prep)
+vocab_rpt_message = get_message(vocab_rpt)
 
+SCOPES = ['https://www.googleapis.com/auth/gmail.labels', 'https://www.googleapis.com/auth/gmail.send']
 
-rpt = prep[prep['review_dt'] >= dt.date.today() - pd.DateOffset(7, 'D')]
-learned = rpt[prep['net_learned'] == 1]['headword']
-forgot = rpt[prep['net_learned'] == -1]['headword']
-new_vocab = rpt[(prep['occurrence']) == 1]['headword']
+service = authenticate(SCOPES)
+
+message = create_message('eric.porter1234+pleco@gmail.com', 'Weekly Pleco Report', vocab_rpt_message)
+
+send_message(service, 'me', message)

@@ -2,4 +2,6 @@ data/
 .vscode/
 save/
 *.7z
-client_secret.json
+credentials.json
+token.pickle
+test.html
