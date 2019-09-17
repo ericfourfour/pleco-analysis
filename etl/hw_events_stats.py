@@ -12,6 +12,16 @@ def is_learned(row):
     return row["daycorrect"] > 0 and row["dayincorrect"] == 0
 
 
+def get_net_learned(row):
+    if not pd.isna(row["laglearned"]) and row["learned"] == row["laglearned"]:
+        return 0
+    if pd.isna(row["laglearned"]) and not row["learned"]:
+        return 0
+    if row["learned"]:
+        return 1
+    return -1
+
+
 def process(config):
 
     hw_events_file = os.path.join(config["frame_folder"], config["hw_events_file"])
@@ -46,8 +56,14 @@ def process(config):
     hw_events_stats["laglearned"] = hw_events_stats.groupby(["hw"], as_index=False)[
         "learned"
     ].shift(1)
+    hw_events_stats["netlearned"] = hw_events_stats.apply(get_net_learned, axis=1)
 
     hw_events_stats_file = os.path.join(
         config["frame_folder"], config["hw_events_stats_file"]
     )
     hw_events_stats.to_pickle(hw_events_stats_file)
+
+
+if __name__ == "__main__":
+    process(config)
+
