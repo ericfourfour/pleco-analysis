@@ -3,19 +3,19 @@ import pandas as pd
 
 config = {
     "frame_folder": "frames",
-    "events_file": "history.pickle",
-    "hw_events_file": "hw_history.pickle",
+    "card_events_file": "card_events.pickle",
+    "hw_events_file": "hw_events.pickle",
 }
 
 
 def process(config):
-    events_file = os.path.join(config["frame_folder"], config["events_file"])
+    card_events_file = os.path.join(config["frame_folder"], config["card_events_file"])
 
-    events = pd.read_pickle(events_file)
-    events.reset_index()
+    card_events = pd.read_pickle(card_events_file)
+    card_events.reset_index()
 
     hw_events = (
-        events.reset_index()[["hw", "reviewedtime", "result"]]
+        card_events.reset_index()[["hw", "reviewedtime", "result"]]
         .sort_values(by=["hw", "reviewedtime", "result"])
         .reset_index(drop=True)
     )

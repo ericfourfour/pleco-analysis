@@ -9,8 +9,8 @@ config = {
     "db_folder": "data",
     "db_folder_rx": r"^\d{4}-\d{2}-\d{2} \d{2}.\d{2}.\d{2}$",
     "frame_folder": "frames",
-    "events_file": "history.pickle",
-    "processed_file": "history_processed.pickle",
+    "events_file": "card_events.pickle",
+    "processed_file": "card_events_processed.pickle",
 }
 
 
