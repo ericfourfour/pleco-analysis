@@ -4,11 +4,17 @@ import pandas as pd
 config = {"frame_folder": "frames", "hw_events_stats_file": "hw_events_stats.pickle"}
 
 
-def get_stats_by_date(config, start=None, end=None):
+def get_stats_by_date(
+    config, start: pd.Timestamp = None, end: pd.Timestamp = None
+) -> pd.DataFrame:
     stats_file = os.path.join(config["frame_folder"], config["hw_events_stats_file"])
     hw_stats = pd.read_pickle(stats_file)
 
-    stats = hw_stats.loc[start:end].copy()
+    stats = hw_stats.copy()
+    if start is not None:
+        stats = stats[stats["revieweddate"] >= start].copy()
+    if end is not None:
+        stats = stats[stats["revieweddate"] < end].copy()
 
     rpt = pd.DataFrame(
         {"reviewed": stats.groupby(["revieweddate"]).size().astype("u2")}

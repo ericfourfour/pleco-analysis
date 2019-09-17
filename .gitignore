@@ -6,3 +6,4 @@ credentials.json
 token.pickle
 test.html
 frames/
+*.pyc

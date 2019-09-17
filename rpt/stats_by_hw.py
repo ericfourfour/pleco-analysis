@@ -6,13 +6,18 @@ import pinyin.cedict
 config = {"frame_folder": "frames", "hw_events_stats_file": "hw_events_stats.pickle"}
 
 
-def get_stats_by_hw(config, start, end):
+def get_stats_by_hw(
+    config, start: pd.Timestamp = None, end: pd.Timestamp = None
+) -> pd.DataFrame:
 
     stats_file = os.path.join(config["frame_folder"], config["hw_events_stats_file"])
     hw_stats = pd.read_pickle(stats_file)
 
-    stats = hw_stats.loc[start:end].copy()
-    stats
+    stats = hw_stats.copy()
+    if start is not None:
+        stats = stats[stats["revieweddate"] >= start].copy()
+    if end is not None:
+        stats = stats[stats["revieweddate"] < end].copy()
 
     rpt = pd.DataFrame({"reviewed": stats.groupby(["hw"]).size().astype("u2")})
     net_learned = stats.groupby(["hw"])["netlearned"].sum()
