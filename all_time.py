@@ -1,14 +1,22 @@
-import datetime as dt
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
+
 from rpt.stats_by_date import get_stats_by_date
 from rpt.stats_by_hw import get_stats_by_hw
 
-config = {"frame_folder": "frames", "hw_events_stats_file": "hw_events_stats.pickle"}
+config = {
+    "frame_folder": "frames",
+    "hw_events_stats_file": "hw_events_stats.pickle",
+    "image_folder": "images",
+    "image_prefix": "all_time",
+}
 
 
-def all_time_report():
-    report = get_stats_by_date(config)
+def plot_all_time_report(config):
+    report = get_stats_by_date(config)[
+        ["reviewed", "new", "netlearned", "cumnew", "cumnetlearned"]
+    ].copy()
 
     charts = report.plot.line()
     plt.axhline(0, color="white", linewidth=0.1, zorder=1)
@@ -42,14 +50,18 @@ def all_time_report():
         lw=2,
         label="TELUS Restructuring",
     )
-    plt.xticks(rotation=90)
+    plt.xticks(rotation=30)
 
-
-def weekly_vocab_report():
-    report = get_stats_by_hw(
-        config, dt.datetime.today() - pd.DateOffset(7, "D"), pd.Timestamp.today()
+    image_path = os.path.join(
+        config["image_folder"],
+        "{}_{}.png".format(
+            config["image_prefix"], pd.Timestamp.today().strftime("%Y%m%d")
+        ),
     )
-    print(report.to_string())
+
+    plt.savefig(image_path)
 
 
-weekly_vocab_report()
+if __name__ == "__main__":
+    plot_all_time_report(config)
+
