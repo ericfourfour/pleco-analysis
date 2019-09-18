@@ -2,3 +2,9 @@ data/
 .vscode/
 save/
 *.7z
+credentials.json
+token.pickle
+test.html
+frames/
+*.pyc
+weekly_vocab.csv
