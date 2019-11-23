@@ -20,8 +20,8 @@ def get_stats_by_date(
         {"reviewed": stats.groupby(["revieweddate"]).size().astype("u2")}
     )
     rpt["new"] = hw_stats.query("occurrence == 0").groupby(["revieweddate"]).size()
-    rpt["learned"] = hw_stats.query("learned == 1").groupby(["revieweddate"]).size()
-    rpt["forgot"] = hw_stats.query("learned == -1").groupby(["revieweddate"]).size()
+    rpt["learned"] = hw_stats.query("netlearned == 1").groupby(["revieweddate"]).size()
+    rpt["forgot"] = hw_stats.query("netlearned == -1").groupby(["revieweddate"]).size()
     rpt["netlearned"] = hw_stats.groupby(["revieweddate"])["netlearned"].sum()
 
     rpt["new"] = rpt["new"].fillna(0).astype("u2")
@@ -29,9 +29,11 @@ def get_stats_by_date(
     rpt["forgot"] = rpt["forgot"].fillna(0).astype("u2")
     rpt["netlearned"] = rpt["netlearned"].fillna(0).astype("i2")
 
+    rpt["cumreviewed"] = rpt["reviewed"].cumsum()
     rpt["cumnew"] = rpt["new"].cumsum()
     rpt["cumnetlearned"] = rpt["netlearned"].cumsum()
 
+    rpt["cumreviewed"] = rpt["cumreviewed"].fillna(0).astype("u2")
     rpt["cumnew"] = rpt["cumnew"].fillna(0).astype("u2")
     rpt["cumnetlearned"] = rpt["cumnetlearned"].fillna(0).astype("i2")
 
