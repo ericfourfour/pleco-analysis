@@ -29,6 +29,7 @@ def process(config):
 
     hw_events_stats = hw_events.copy()
 
+    hw_events_stats["invresult"] = hw_events_stats["result"].apply(lambda x: not x)
     hw_events_stats["revieweddate"] = hw_events_stats["reviewedtime"].apply(
         lambda x: x.date()
     )
@@ -48,8 +49,8 @@ def process(config):
         .astype("u2")
     )
     hw_events_stats["dayincorrect"] = (
-        hw_events_stats.groupby(["hw", "revieweddate"])["result"]
-        .transform(lambda x: x.apply(lambda y: not y).sum())
+        hw_events_stats.groupby(["hw", "revieweddate"])["invresult"]
+        .transform("sum")
         .astype("u2")
     )
     hw_events_stats["learned"] = hw_events_stats.apply(is_learned, axis=1)
