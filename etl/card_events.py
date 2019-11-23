@@ -42,7 +42,7 @@ def interpolate_row_events(group: pd.DataFrame) -> pd.DataFrame:
 
     firstreviewedtime = row["firstreviewedtime"]
     lastreviewedtime = row["lastreviewedtime"]
-    history = row["history"]
+    history = str(row["history"])[::-1]
     cumreviewed = row["cumreviewed"]
 
     duration = lastreviewedtime - firstreviewedtime
@@ -86,7 +86,7 @@ def get_incremental_scores(
         (scores2["reviewed"] - scores1["reviewed"]).fillna(0).astype("u4")
     )
     diff["inc_history"] = diff.apply(
-        lambda x: x["history"][-x["inc_scores"] :] if x["inc_scores"] > 0 else np.nan,
+        lambda x: x["history"][: x["inc_scores"]] if x["inc_scores"] > 0 else np.nan,
         axis=1,
     )
     diff["last_frt"] = scores1["firstreviewedtime"]
