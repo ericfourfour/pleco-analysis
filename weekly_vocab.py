@@ -31,23 +31,62 @@ def weekly_vocab_report(config) -> pd.DataFrame:
     return report
 
 
-def get_message(report: pd.DataFrame) -> str:
-    learned = report.query("learned").reset_index()[["hw", "pinyin", "definition"]]
-    forgot = report.query("forgot").reset_index()[["hw", "pinyin", "definition"]]
-    new_vocab = report.query("new").reset_index()[["hw", "pinyin", "definition"]]
+def get_formatted_report(report: pd.DataFrame) -> pd.DataFrame:
+    rpt = report.reset_index().copy()
+    rpt["definition"] = rpt["definition"].str.join(" / ")
+    rpt.sort_values(["hw"], inplace=True)
+    return rpt
 
-    s = "你这个星期练习了{}个词呀！你的报告如下：<p>".format(len(report.index))
-    if len(learned.index) > 0:
+
+def get_message(report: pd.DataFrame) -> str:
+    fmt_rpt = get_formatted_report(report)
+
+    learned = fmt_rpt.query("learned")[["hw", "pinyin", "definition"]]
+    forgot = fmt_rpt.query("forgot")[["hw", "pinyin", "definition"]]
+    new_vocab = fmt_rpt.query("new")[["hw", "pinyin", "definition"]]
+    not_learned = fmt_rpt.query("not new and not knew and not know")[
+        ["hw", "pinyin", "definition"]
+    ]
+    not_forgot = fmt_rpt.query("knew and know")[["hw", "pinyin", "definition"]]
+
+    n_reviewed = len(report.index)
+
+    n_learned = len(learned.index)
+    n_learnable = len(fmt_rpt.query("not knew").index)
+
+    n_forgot = len(forgot.index)
+    n_forgettable = len(fmt_rpt.query("knew").index)
+
+    n_not_forgot = len(not_forgot.index)
+
+    s = "你这个星期练习了{}个词呀！你的报告如下：<p>".format(n_reviewed)
+
+    s += "学到了：{} / {} ({:.0f}%) [学到的 / 不已经知道的]<br>".format(
+        n_learned, n_learnable, (n_learned / n_learnable) * 100
+    )
+    s += "忘记了：{} / {} ({:.0f}%) [忘记的 / 已经知道的]<p>".format(
+        n_forgot, n_forgettable, (n_forgot / n_forgettable) * 100
+    )
+
+    if n_learned > 0:
         s += "你学到了{}个词：<br>{}<p>".format(
-            len(learned.index), learned.to_html(index=False, col_space=50)
+            n_learned, learned.to_html(index=False, col_space=50)
         )
-    if len(forgot.index) > 0:
+    if n_forgot > 0:
         s += "你忘记了{}个词：<br>{}<p>".format(
-            len(forgot.index), forgot.to_html(index=False, col_space=50)
+            n_forgot, forgot.to_html(index=False, col_space=50)
         )
     if len(new_vocab.index) > 0:
-        s += "你学了{}个生词：<br>{}".format(
+        s += "你学了{}个生词：<br>{}<p>".format(
             len(new_vocab.index), new_vocab.to_html(index=False, col_space=50)
+        )
+    if len(not_learned.index) > 0:
+        s += "你还没有学好{}个词：<br>{}<p>".format(
+            len(not_learned.index), not_learned.to_html(index=False, col_space=50)
+        )
+    if n_not_forgot > 0:
+        s += "你还没有忘记{}个词：<br>{}<p>".format(
+            n_not_forgot, not_forgot.to_html(index=False, col_space=50)
         )
     return s
 
