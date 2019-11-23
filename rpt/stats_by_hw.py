@@ -19,13 +19,46 @@ def get_stats_by_hw(
     if end is not None:
         stats = stats[stats["revieweddate"] < end].copy()
 
-    rpt = pd.DataFrame({"reviewed": stats.groupby(["hw"]).size().astype("u2")})
-    net_learned = stats.groupby(["hw"])["netlearned"].sum()
-    rpt["new"] = (
-        stats.reset_index().groupby(["hw"])["occurrence"].min().apply(lambda x: x == 0)
+    first_review = stats.groupby(["hw"]).head(1).reset_index().set_index("hw").copy()
+    last_review = stats.groupby(["hw"]).tail(1).reset_index().set_index("hw").copy()
+
+    first_change = (
+        stats[stats["netlearned"] != 0]
+        .groupby(["hw"])
+        .head(1)
+        .reset_index()
+        .set_index("hw")
+        .copy()
     )
-    rpt["learned"] = net_learned.apply(lambda x: x == 1)
-    rpt["forgot"] = net_learned.apply(lambda x: x == -1)
+    last_change = (
+        stats[stats["netlearned"] != 0]
+        .groupby(["hw"])
+        .tail(1)
+        .reset_index()
+        .set_index("hw")
+        .copy()
+    )
+
+    rpt = pd.DataFrame({"reviewed": stats.groupby(["hw"]).size().astype("u2")})
+
+    rpt["firstreviewed"] = first_review["revieweddate"]
+    rpt["lastreviewed"] = last_review["revieweddate"]
+
+    rpt["correct"] = stats.groupby(["hw"])[["result"]].sum().astype("u2")
+    rpt["incorrect"] = stats.groupby(["hw"])[["invresult"]].sum().astype("u2")
+
+    rpt["new"] = first_review["occurrence"].apply(lambda x: x == 0)
+    rpt["knew"] = first_review["laglearned"].apply(lambda x: x == True)
+    rpt["learned"] = first_change["netlearned"].apply(lambda x: x == 1)
+    rpt["forgot"] = first_change["netlearned"].apply(lambda x: x == -1)
+
+    rpt["knew"] = rpt["knew"].fillna(False)
+    rpt["learned"] = rpt["learned"].fillna(False)
+    rpt["forgot"] = rpt["forgot"].fillna(False)
+
+    rpt["know"] = rpt.apply(
+        lambda row: row["learned"] or (row["knew"] and not row["forgot"]), axis=1
+    )
 
     rpt["pinyin"] = rpt.apply(lambda row: pinyin.get(row.name), axis=1)
     rpt["definition"] = rpt.apply(
